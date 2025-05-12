@@ -1,42 +1,63 @@
-#include <Wire.h>
+#include <M5Unified.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include "M5Unified.h" // M5Stack用ライブラリ
+#include <math.h>
 
 // BNO055のインスタンスを作成
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
-void setup() {
-  M5.begin(); // M5Stackの初期化
-  Wire.begin(); // I2C通信の初期化
+// 3D座標を回転する関数
+void rotatePoint(float &x, float &y, float &z, imu::Quaternion quat) {
+  float qw = quat.w(), qx = quat.x(), qy = quat.y(), qz = quat.z();
+  float nx = (1 - 2 * (qy * qy + qz * qz)) * x + (2 * (qx * qy - qw * qz)) * y + (2 * (qx * qz + qw * qy)) * z;
+  float ny = (2 * (qx * qy + qw * qz)) * x + (1 - 2 * (qx * qx + qz * qz)) * y + (2 * (qy * qz - qw * qx)) * z;
+  float nz = (2 * (qx * qz - qw * qy)) * x + (2 * (qy * qz + qw * qx)) * y + (1 - 2 * (qx * qx + qy * qy)) * z;
+  x = nx;
+  y = ny;
+  z = nz;
+}
 
-  M5.Display.setTextSize(2); // テキストサイズを設定
+// 立方体の頂点
+float cubeVertices[8][3] = {
+    {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+    {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
+
+void drawCube(imu::Quaternion quat) {
+  int centerX = 160, centerY = 120; // ディスプレイの中心
+  float scale = 50;                 // スケール
+
+  // 頂点を回転して描画
+  for (int i = 0; i < 8; i++) {
+    float x = cubeVertices[i][0], y = cubeVertices[i][1], z = cubeVertices[i][2];
+    rotatePoint(x, y, z, quat);
+    int screenX = centerX + x * scale;
+    int screenY = centerY - y * scale;
+    M5.Display.fillCircle(screenX, screenY, 2, TFT_WHITE);
+  }
+}
+
+void setup() {
+  M5.begin();
+  Wire.begin();
+  M5.Display.setTextSize(2);
   M5.Display.println("Initializing...");
 
   if (!bno.begin()) {
     M5.Display.println("BNO055 not detected!");
-    while (1); // センサーが見つからない場合は停止
+    while (1);
   }
 
   M5.Display.println("BNO055 detected!");
-  bno.setExtCrystalUse(true); // 外部クリスタルを使用
-  delay(1000); // 初期化メッセージを表示するための遅延
+  bno.setExtCrystalUse(true);
+  delay(1000);
 }
 
 void loop() {
-  M5.update(); // M5Stackの状態を更新
-
-  // クォータニオンデータを取得
+  M5.update();
   imu::Quaternion quat = bno.getQuat();
 
-  // ディスプレイにクォータニオンを表示
-  M5.Display.clear(); // ディスプレイをクリア
-  M5.Display.setCursor(0, 0); // カーソルを左上に設定
-  M5.Display.println("Quaternion:");
-  M5.Display.printf("W: %.2f\n", quat.w());
-  M5.Display.printf("X: %.2f\n", quat.x());
-  M5.Display.printf("Y: %.2f\n", quat.y());
-  M5.Display.printf("Z: %.2f\n", quat.z());
+  M5.Display.clear();
+  drawCube(quat); // クォータニオンで回転した立方体を描画
 
-  delay(1000); // 1秒ごとに更新
+  delay(100);
 }
